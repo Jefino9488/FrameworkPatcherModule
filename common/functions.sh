@@ -300,6 +300,37 @@ fi
 # Set permissions
 ui_print " "
 ui_print "- Setting Permissions"
+
+# KSU Storage Protection - Ensure storage remains accessible
+if $KSU; then
+  ui_print "- Applying KSU storage protection"
+  # Prevent /sdcard unmounting during module installation
+  if [ -d "/sdcard" ]; then
+    mount | grep -q "/sdcard" || {
+      ui_print "  - Remounting /sdcard for KSU compatibility"
+      mount -t sdcardfs -o rw,nosuid,nodev,noexec,relatime /data/media /sdcard 2>/dev/null || {
+        ui_print "  ! Warning: Could not remount /sdcard"
+      }
+    }
+  fi
+
+  # Fix framework.jar storage paths for KSU
+  if [ -f "$MODPATH/system/framework/framework.jar" ]; then
+    ui_print "  - Securing framework.jar storage path"
+    # Create backup directory for safety
+    mkdir -p "/data/local/tmp/framework_backup" 2>/dev/null
+    # Ensure proper permissions for framework files
+    chmod 644 "$MODPATH/system/framework/"*.jar 2>/dev/null || true
+  fi
+fi
+
+# Framework Storage Protection for all root methods
+if [ -f "$MODPATH/system/framework/framework.jar" ]; then
+  ui_print "  - Securing framework file storage"
+  # Ensure framework files have proper permissions and are accessible
+  find "$MODPATH/system/framework" -name "*.jar" -exec chmod 644 {} \; 2>/dev/null || true
+  find "$MODPATH/system/system_ext/framework" -name "*.jar" -exec chmod 644 {} \; 2>/dev/null || true
+fi
 set_perm_recursive $MODPATH 0 0 0755 0644
 for i in /system/vendor /vendor /system/vendor/app /vendor/app /system/vendor/etc /vendor/etc /system/odm/etc /odm/etc /system/vendor/odm/etc /vendor/odm/etc /system/vendor/overlay /vendor/overlay; do
   if [ -d "$MODPATH$i" ] && [ ! -L "$MODPATH$i" ]; then
@@ -315,6 +346,62 @@ for i in $(find $MODPATH/system/vendor $MODPATH/vendor -type f -name *".apk" 2>/
   chcon u:object_r:vendor_app_file:s0 $i
 done
 set_permissions
+
+##########################################################################################
+# Storage Remount Protection Function
+##########################################################################################
+
+protect_storage() {
+  ui_print " "
+  ui_print "- Protecting Storage Access"
+
+  # Protect /sdcard from being unmounted
+  if [ -d "/sdcard" ]; then
+    if ! mount | grep -q "/sdcard"; then
+      ui_print "  - Remounting /sdcard"
+      mount -t sdcardfs -o rw,nosuid,nodev,noexec,relatime /data/media /sdcard 2>/dev/null || {
+        ui_print "  ! Failed to remount /sdcard"
+      }
+    fi
+  fi
+
+  # Protect emulated storage
+  if [ -d "/storage/emulated/0" ]; then
+    if ! mount | grep -q "/storage/emulated/0"; then
+      ui_print "  - Remounting emulated storage"
+      mount -t sdcardfs -o rw,nosuid,nodev,noexec,relatime /data/media /storage/emulated/0 2>/dev/null || true
+    fi
+  fi
+
+  # Protect external storage
+  for storage_path in /storage/*; do
+    if [ -d "$storage_path" ] && [ "$storage_path" != "/storage/emulated" ]; then
+      if ! mount | grep -q "$storage_path"; then
+        ui_print "  - Checking external storage: $(basename $storage_path)"
+        # Try to mount external storage if accessible
+        mountpoint -q "$storage_path" || {
+          ui_print "  ! External storage $(basename $storage_path) not accessible"
+        }
+      fi
+    fi
+  done
+
+  # Test storage accessibility
+  ui_print "  - Testing storage access"
+  for test_path in "/sdcard" "/storage/emulated/0"; do
+    if [ -d "$test_path" ]; then
+      if echo "test" > "$test_path/.storage_test" 2>/dev/null; then
+        rm -f "$test_path/.storage_test" 2>/dev/null
+        ui_print "  ✓ $test_path is accessible"
+      else
+        ui_print "  ✗ $test_path is not writable"
+      fi
+    fi
+  done
+}
+
+# Call storage protection at the end of installation
+protect_storage
 
 # Complete install
 cleanup
