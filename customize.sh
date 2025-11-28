@@ -38,6 +38,51 @@ if [ ! -d "$MODPATH" ]; then
 fi
 
 ##########################################################################################
+# Kaorios Toolbox Setup (if enabled)
+##########################################################################################
+
+# Check if Kaorios Toolbox feature is enabled
+if [ -d "$MODPATH/kaorios" ]; then
+  ui_print "- Installing Kaorios Toolbox components"
+  
+  # Note: Data files removed - app fetches from its own repository
+  # This module only installs the APK, permissions, and system props
+  
+  # Install Kaorios Toolbox APK as priv-app
+  if [ -f "$MODPATH/kaorios/KaoriosToolbox.apk" ]; then
+    ui_print "  • Installing KaoriosToolbox APK"
+    mkdir -p "$MODPATH/system/product/priv-app/KaoriosToolbox"
+    cp -f "$MODPATH/kaorios/KaoriosToolbox.apk" "$MODPATH/system/product/priv-app/KaoriosToolbox/KaoriosToolbox.apk"
+    chmod 644 "$MODPATH/system/product/priv-app/KaoriosToolbox/KaoriosToolbox.apk"
+  fi
+  
+  # Install privapp permission whitelist
+  if [ -f "$MODPATH/kaorios/privapp_whitelist_com.kousei.kaorios.xml" ]; then
+    ui_print "  • Installing privapp permissions"
+    mkdir -p "$MODPATH/system/product/etc/permissions"
+    cp -f "$MODPATH/kaorios/privapp_whitelist_com.kousei.kaorios.xml" "$MODPATH/system/product/etc/permissions/"
+    chmod 644 "$MODPATH/system/product/etc/permissions/privapp_whitelist_com.kousei.kaorios.xml"
+  fi
+  
+  # Add system props
+  ui_print "  • Configuring system properties"
+  {
+    echo "# Kaorios Toolbox"
+    echo "persist.sys.kaorios=kousei"
+    echo "ro.control_privapp_permissions="
+  } >> "$MODPATH/system.prop"
+  
+  # Display version if available
+  if [ -f "$MODPATH/kaorios/version.txt" ]; then
+    local kaorios_version=$(cat "$MODPATH/kaorios/version.txt")
+    ui_print "  • Kaorios Toolbox version: $kaorios_version"
+  fi
+  
+  ui_print "✓ Kaorios Toolbox installation complete"
+  ui_print "  Note: App will fetch data from its repository"
+fi
+
+##########################################################################################
 # KSU Storage Protection - Prevent /sdcard unmounting
 ##########################################################################################
 
